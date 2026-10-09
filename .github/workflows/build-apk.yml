@@ -1,0 +1,50 @@
+name: Build Main App APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Web App
+        run: |
+          npm install --legacy-peer-deps
+          npm run build
+
+      - name: Setup Capacitor Android
+        run: |
+          npm install @capacitor/core@^5.7.0 @capacitor/cli@^5.7.0 @capacitor/android@^5.7.0 --legacy-peer-deps
+          npx cap init "Main App" "com.mainapp.water" --web-dir dist
+          npx cap add android
+          npx cap sync android
+
+      - name: Build Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload Working APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Main-App-Working
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          
