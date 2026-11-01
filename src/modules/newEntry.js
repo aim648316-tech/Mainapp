@@ -1,4 +1,4 @@
-import { getState } from '../store.js'
+import { getState, setState } from '../store.js'
 import { addRecord, updateRecord, todayStr, timeStr, num, sortRouteCustomers } from '../utils.js'
 
 export function renderNewEntry() {
@@ -36,10 +36,6 @@ export function renderNewEntry() {
               class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-sm">
               <option value="">-- ગ્રાહક પસંદ કરો --</option>
             </select>
-            <div class="grid grid-cols-2 gap-2 mt-2">
-              <button id="nePrev" class="w-full px-2 py-2.5 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold btn-press text-center">⏮️ પાછળનો ગ્રાહક</button>
-              <button id="neNext" class="w-full px-2 py-2.5 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold btn-press text-center">આગળનો ગ્રાહક ⏩</button>
-            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
@@ -57,31 +53,32 @@ export function renderNewEntry() {
             </div>
           </div>
 
-          <div class="grid grid-cols-3 gap-3">
+          <div id="neDuplicateWarning" class="hidden rounded-xl p-3 bg-warning-50 border border-warning-300">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">⚠️</span>
+              <div>
+                <div class="text-sm font-bold text-warning-800">આજના તારીખે આ ગ્રાહકની એન્ટ્રી પહેલેથી છે!</div>
+                <div class="text-xs text-warning-700">ફરી સેવ કરવાથી નવી એન્ટ્રી ઉમેરાશે.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">📦 ભરેલી આપી</label>
-              <input id="neFull" type="number" inputmode="numeric" placeholder="0"
-                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-sm text-center" />
+              <input id="neFull" type="number" inputmode="numeric" value="0"
+                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-lg text-center" />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">📦 ખાલી લીધી</label>
-              <input id="neEmpty" type="number" inputmode="numeric" placeholder="0"
-                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-sm text-center" />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">💵 રોકડા મળ્યા</label>
-              <input id="nePaid" type="number" inputmode="numeric" placeholder="0"
-                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-sm text-center" />
+              <input id="neEmpty" type="number" inputmode="numeric" value="0"
+                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-lg text-center" />
             </div>
           </div>
 
           <button id="neSave"
             class="w-full py-3.5 rounded-xl bg-gradient-to-r from-brand-500 to-brand-700 text-white font-semibold shadow-lg btn-press hover:shadow-xl transition-all">
             ✅ સેવ એન્ટ્રી
-          </button>
-          <button id="nePayment"
-            class="w-full py-3.5 rounded-xl bg-gradient-to-r from-accent-500 to-accent-600 text-white font-semibold shadow-lg btn-press hover:shadow-xl transition-all">
-            💵 માત્ર રોકડા જમા લો
           </button>
         </div>
       </div>
@@ -95,12 +92,10 @@ export function initNewEntry() {
   const rateInput = document.getElementById('neRate')
   const fullInput = document.getElementById('neFull')
   const emptyInput = document.getElementById('neEmpty')
-  const paidInput = document.getElementById('nePaid')
   const dueDisplay = document.getElementById('neDue')
   const saveBtn = document.getElementById('neSave')
-  const paymentBtn = document.getElementById('nePayment')
-  const prevBtn = document.getElementById('nePrev')
-  const nextBtn = document.getElementById('neNext')
+  const dupWarning = document.getElementById('neDuplicateWarning')
+  const dateInput = document.getElementById('neDate')
 
   let routeCustomerIds = []
 
@@ -119,8 +114,7 @@ export function initNewEntry() {
   function updateDue() {
     const rate = num(rateInput.value)
     const full = num(fullInput.value)
-    const paid = num(paidInput.value)
-    const due = full * rate - paid
+    const due = full * rate
     dueDisplay.textContent = `₹ ${due}`
     dueDisplay.className = `w-full px-3 py-2.5 rounded-lg border-2 text-sm font-semibold flex items-center ${
       due > 0
@@ -129,34 +123,46 @@ export function initNewEntry() {
     }`
   }
 
-  function navigateCustomer(dir) {
-    if (routeCustomerIds.length === 0) return
-    const currentIdx = routeCustomerIds.indexOf(customerSelect.value)
-    let nextIdx
-    if (currentIdx === -1) {
-      nextIdx = dir > 0 ? 0 : routeCustomerIds.length - 1
-    } else {
-      nextIdx = currentIdx + dir
+  function checkDuplicate() {
+    const { deliveries } = getState()
+    const customerId = customerSelect.value
+    const date = dateInput.value
+    if (!customerId || !date) {
+      dupWarning.classList.add('hidden')
+      return
     }
-    if (nextIdx < 0 || nextIdx >= routeCustomerIds.length) return
-    customerSelect.value = routeCustomerIds[nextIdx]
-    customerSelect.dispatchEvent(new Event('change'))
+    const existing = deliveries.find(
+      (d) => d.customerId === customerId && d.date === date && !d.isPayment && num(d.full) > 0
+    )
+    if (existing) {
+      dupWarning.classList.remove('hidden')
+    } else {
+      dupWarning.classList.add('hidden')
+    }
   }
 
-  routeSelect.addEventListener('change', updateCustomers)
+  function advanceToNextCustomer() {
+    const currentIdx = routeCustomerIds.indexOf(customerSelect.value)
+    if (currentIdx !== -1 && currentIdx + 1 < routeCustomerIds.length) {
+      customerSelect.value = routeCustomerIds[currentIdx + 1]
+      customerSelect.dispatchEvent(new Event('change'))
+    }
+  }
+
+  routeSelect.addEventListener('change', () => { updateCustomers(); checkDuplicate() })
   customerSelect.addEventListener('change', () => {
     const opt = customerSelect.options[customerSelect.selectedIndex]
     const rate = opt?.dataset.rate
     if (rate) rateInput.value = rate
     updateDue()
+    checkDuplicate()
   })
-  ;[rateInput, fullInput, paidInput].forEach((el) => el.addEventListener('input', updateDue))
-  prevBtn.addEventListener('click', () => navigateCustomer(-1))
-  nextBtn.addEventListener('click', () => navigateCustomer(1))
+  dateInput.addEventListener('change', checkDuplicate)
+  fullInput.addEventListener('input', updateDue)
 
   saveBtn.addEventListener('click', async () => {
-    const { customers } = getState()
-    const date = document.getElementById('neDate').value
+    const { customers, settings } = getState()
+    const date = dateInput.value
     const route = routeSelect.value
     const customerId = customerSelect.value
     const customer = customers.find((c) => c.id === customerId)
@@ -167,112 +173,69 @@ export function initNewEntry() {
     const rate = num(rateInput.value)
     const full = num(fullInput.value)
     const empty = num(emptyInput.value)
-    const paid = num(paidInput.value)
-    const due = full * rate - paid
+    const due = full * rate
+
+    if (full === 0 && empty === 0) {
+      alert('ભરેલી અથવા ખાલી બોટલ દાખલ કરો!')
+      return
+    }
+
+    const isDuplicate = !dupWarning.classList.contains('hidden')
+    if (isDuplicate) {
+      if (!confirm(`⚠️ આજે ${customer.name} ની એન્ટ્રી પહેલેથી છે. શું ફરી સેવ કરવી છે?`)) return
+    }
+
+    const deliveryData = {
+      date,
+      time: timeStr(),
+      route,
+      customerId,
+      customerName: customer.name,
+      full,
+      empty,
+      paid: 0,
+      due,
+      rate,
+    }
+
+    const optimisticDelivery = {
+      id: 'temp-' + Date.now(),
+      ...deliveryData,
+      createdAt: { toMillis: () => Date.now() },
+    }
+
+    const { deliveries: currentDeliveries, customers: currentCustomers } = getState()
+    const optimisticCustomers = currentCustomers.map((c) =>
+      c.id === customerId
+        ? { ...c, pendingBottles: num(c.pendingBottles) + (full - empty), pendingDue: num(c.pendingDue) + due }
+        : c
+    )
+
+    setState({
+      deliveries: [...currentDeliveries, optimisticDelivery],
+      customers: optimisticCustomers,
+    })
+
+    fullInput.value = '0'
+    emptyInput.value = '0'
+    updateDue()
+
+    if (settings?.autoAdvance !== false) {
+      setTimeout(() => advanceToNextCustomer(), 100)
+    }
 
     try {
-      saveBtn.disabled = true
-      saveBtn.textContent = 'સેવ થઈ રહ્યું છે...'
-
-      await addRecord('deliveries', {
-        date,
-        time: timeStr(),
-        route,
-        customerId,
-        customerName: customer.name,
-        full,
-        empty,
-        paid,
-        due,
-        rate,
-      })
-
-      const prevBottles = num(customer.pendingBottles)
-      const prevDue = num(customer.pendingDue)
+      await addRecord('deliveries', deliveryData)
       await updateRecord('customers', customerId, {
-        pendingBottles: prevBottles + (full - empty),
-        pendingDue: prevDue + due,
+        pendingBottles: num(customer.pendingBottles) + (full - empty),
+        pendingDue: num(customer.pendingDue) + due,
       })
-
-      fullInput.value = ''
-      emptyInput.value = ''
-      paidInput.value = ''
-      updateDue()
-
-      const currentIdx = routeCustomerIds.indexOf(customerId)
-      if (currentIdx !== -1 && currentIdx + 1 < routeCustomerIds.length) {
-        customerSelect.value = routeCustomerIds[currentIdx + 1]
-        customerSelect.dispatchEvent(new Event('change'))
-      }
-
-      saveBtn.disabled = false
-      saveBtn.textContent = '✅ સેવ એન્ટ્રી'
-      alert('✅ એન્ટ્રી સેવ થઈ!')
     } catch (err) {
-      alert('ભૂલ: ' + err.message)
-      saveBtn.disabled = false
-      saveBtn.textContent = '✅ સેવ એન્ટ્રી'
+      console.error('Save failed (will retry):', err)
     }
   })
 
   updateCustomers()
   updateDue()
-
-  paymentBtn.addEventListener('click', async () => {
-    const { customers } = getState()
-    const date = document.getElementById('neDate').value
-    const route = routeSelect.value
-    const customerId = customerSelect.value
-    const customer = customers.find((c) => c.id === customerId)
-    if (!customer) {
-      alert('ગ્રાહક પસંદ કરો!')
-      return
-    }
-
-    const amountStr = prompt(`💵 ${customer.name} પાસેથી કેટલા રોકડા મળ્યા?`)
-    if (!amountStr) return
-    const paid = num(amountStr)
-    if (paid <= 0) {
-      alert('સાચી રકમ દાખલ કરો!')
-      return
-    }
-
-    try {
-      paymentBtn.disabled = true
-      paymentBtn.textContent = 'સેવ થઈ રહ્યું છે...'
-
-      await addRecord('deliveries', {
-        date,
-        time: timeStr(),
-        route,
-        customerId,
-        customerName: customer.name,
-        full: 0,
-        empty: 0,
-        paid,
-        due: -paid,
-        rate: num(rateInput.value),
-        isPayment: true,
-      })
-
-      const prevDue = num(customer.pendingDue)
-      await updateRecord('customers', customerId, {
-        pendingDue: Math.max(0, prevDue - paid),
-      })
-
-      const currentIdx = routeCustomerIds.indexOf(customerId)
-      if (currentIdx !== -1 && currentIdx + 1 < routeCustomerIds.length) {
-        customerSelect.value = routeCustomerIds[currentIdx + 1]
-        customerSelect.dispatchEvent(new Event('change'))
-      }
-
-      paymentBtn.disabled = false
-      paymentBtn.textContent = '💵 માત્ર રોકડા જમા લો'
-      alert(`✅ ₹${paid} રોકડા જમા થયા!`)
-    } catch (err) {
-      alert('ભૂલ: ' + err.message)
-      paymentBtn.disabled = false
-      paymentBtn.textContent = '💵 માત્ર રોકડા જમા લો'
-    }
-  })
+  checkDuplicate()
 }

@@ -3,12 +3,14 @@ import { watchCollection, sortByOrder, fetchSettings } from './utils.js'
 let routes = []
 let customers = []
 let deliveries = []
+let vehicles = []
+let vehicleExpenses = []
 let settings = {}
 
 const listeners = new Set()
 
 export function getState() {
-  return { routes, customers, deliveries, settings }
+  return { routes, customers, deliveries, vehicles, vehicleExpenses, settings }
 }
 
 export function notify() {
@@ -21,7 +23,16 @@ export function subscribe(fn) {
   return () => listeners.delete(fn)
 }
 
-let unsubRoutes, unsubCustomers, unsubDeliveries
+export function setState(updates) {
+  if (updates.routes !== undefined) routes = updates.routes
+  if (updates.customers !== undefined) customers = updates.customers
+  if (updates.deliveries !== undefined) deliveries = updates.deliveries
+  if (updates.vehicles !== undefined) vehicles = updates.vehicles
+  if (updates.vehicleExpenses !== undefined) vehicleExpenses = updates.vehicleExpenses
+  notify()
+}
+
+let unsubRoutes, unsubCustomers, unsubDeliveries, unsubVehicles, unsubVehicleExpenses
 
 export function initListeners() {
   if (unsubRoutes) return
@@ -36,6 +47,14 @@ export function initListeners() {
   })
   unsubDeliveries = watchCollection('deliveries', null, (items) => {
     if (items) deliveries = items
+    notify()
+  })
+  unsubVehicles = watchCollection('vehicles', null, (items) => {
+    if (items) vehicles = sortByOrder(items)
+    notify()
+  })
+  unsubVehicleExpenses = watchCollection('vehicle_expenses', null, (items) => {
+    if (items) vehicleExpenses = items
     notify()
   })
 }

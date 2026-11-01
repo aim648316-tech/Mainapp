@@ -216,7 +216,8 @@ export function initPassbook() {
       }
     })
 
-    const waMsg = buildPassbookMsg(customer, monthName, year, totalFull, totalEmpty, totalPaid, overallPendingBottles, overallPendingDue, monthDeliveries)
+    const billUrl = `${window.location.origin}${window.location.pathname}#/bill?id=${customerId}&month=${month}&year=${year}`
+    const waMsg = buildPassbookMsg(customer, monthName, year, totalFull, totalEmpty, totalPaid, overallPendingBottles, overallPendingDue, monthDeliveries, billUrl)
     const waUrl = `https://wa.me/${(customer.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`
 
     resultsEl.innerHTML = `
@@ -259,9 +260,13 @@ export function initPassbook() {
           class="w-full py-2.5 rounded-lg bg-accent-500 text-white font-semibold btn-press text-sm">💾 રોકડા સેવ કરો</button>
       </div>
 
+      <button id="pbBillPreviewBtn"
+        class="w-full py-3 rounded-xl bg-brand-600 text-white font-semibold shadow-lg btn-press hover:bg-brand-700 transition-colors flex items-center justify-center gap-2 mb-3">
+        📄 બિલ પ્રિવ્યૂ અને પ્રિન્ટ (Direct Print)
+      </button>
       <a href="${waUrl}" target="_blank"
         class="w-full py-3 rounded-xl bg-green-500 text-white font-semibold shadow-lg btn-press hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-4">
-        📲 WhatsApp પર સ્ટેટમેન્ટ મોકલો
+        📲 WhatsApp પર બિલ લિંક મોકલો
       </a>
 
       <div class="mb-4">
@@ -309,6 +314,13 @@ export function initPassbook() {
         if (delivery) promptPbEditPayment(delivery, customerId, customer)
       })
     })
+
+    const billPreviewBtn = document.getElementById('pbBillPreviewBtn')
+    if (billPreviewBtn) {
+      billPreviewBtn.addEventListener('click', () => {
+        showBillPreviewModal(customer, monthName, year, monthDeliveries, beforeDeliveries, totalFull, totalEmpty, totalPaid, monthBill, previousBalance, netDue, customerRate)
+      })
+    }
 
     const paySaveBtn = document.getElementById('pbPaySave')
     if (paySaveBtn) {
@@ -484,7 +496,161 @@ function promptPbEditPayment(delivery, customerId, customer) {
   })
 }
 
-function buildPassbookMsg(c, monthName, year, totalFull, totalEmpty, totalPaid, pendingBottles, pendingDue, deliveries) {
+function showBillPreviewModal(customer, monthName, year, monthDeliveries, beforeDeliveries, totalFull, totalEmpty, totalPaid, monthBill, previousBalance, netDue, customerRate) {
+  const { settings } = getState()
+  const bizName = settings?.bizName || 'ઠાકરધણી વોટર સપ્લાય'
+  const isPayment = (d) => d.isPayment || (num(d.full) === 0 && num(d.empty) === 0 && num(d.paid) > 0)
+  const deliveryEntries = monthDeliveries.filter((d) => !isPayment(d))
+  const paymentEntries = monthDeliveries.filter((d) => isPayment(d))
+
+  const billDate = new Date()
+  const billDateStr = `${String(billDate.getDate()).padStart(2, '0')}/${String(billDate.getMonth() + 1).padStart(2, '0')}/${billDate.getFullYear()}`
+
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 fade-in overflow-y-auto'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md my-4 modal-in bill-print-area">
+      <div class="bg-gradient-to-r from-brand-600 to-brand-700 text-white p-5 text-center rounded-t-2xl">
+        <div class="text-xl font-bold mb-0.5">💧 ${bizName}</div>
+        <div class="text-xs text-white/80">પાણી સપ્લાય સેવા</div>
+      </div>
+
+      <div class="p-5 max-h-[60vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-3 pb-3 border-b border-gray-200">
+          <div>
+            <div class="text-xs text-gray-500">બિલ મહિનો</div>
+            <div class="text-base font-bold text-gray-800">${monthName} ${year}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-gray-500">બિલ તારીખ</div>
+            <div class="text-xs font-semibold text-gray-700">${billDateStr}</div>
+          </div>
+        </div>
+
+        <div class="bg-brand-50 rounded-xl p-3 mb-3 border border-brand-200">
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <div class="text-gray-500">👤 ગ્રાહક</div>
+              <div class="font-semibold text-gray-800">${customer.name}</div>
+            </div>
+            <div>
+              <div class="text-gray-500">📍 રૂટ</div>
+              <div class="font-semibold text-gray-800">${customer.route || '-'}</div>
+            </div>
+            ${customer.phone ? `<div><div class="text-gray-500">📞 ફોન</div><div class="font-semibold text-gray-800">${customer.phone}</div></div>` : ''}
+          </div>
+        </div>
+
+        ${deliveryEntries.length > 0 ? `
+          <h3 class="text-xs font-bold text-gray-700 mb-1.5">📦 ડિલિવરી વિગત</h3>
+          <div class="overflow-x-auto mb-3">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b-2 border-gray-200 text-gray-600">
+                  <th class="text-left py-1.5 px-1">તારીખ</th>
+                  <th class="text-center py-1.5 px-1">ભરેલી</th>
+                  <th class="text-center py-1.5 px-1">ખાલી</th>
+                  <th class="text-right py-1.5 px-1">રકમ</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${deliveryEntries.map((d) => `
+                  <tr class="border-b border-gray-100">
+                    <td class="py-1.5 px-1 text-gray-700">${formatDate(d.date)}</td>
+                    <td class="py-1.5 px-1 text-center text-gray-700">${num(d.full)}</td>
+                    <td class="py-1.5 px-1 text-center text-gray-700">${num(d.empty)}</td>
+                    <td class="py-1.5 px-1 text-right font-semibold text-brand-700">₹${num(d.full) * num(d.rate || customerRate)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+              <tfoot>
+                <tr class="border-t-2 border-gray-300 font-bold">
+                  <td colspan="3" class="py-1.5 px-1 text-right text-gray-700">કુલ:</td>
+                  <td class="py-1.5 px-1 text-right text-brand-700">₹${monthBill}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ` : ''}
+
+        ${paymentEntries.length > 0 ? `
+          <h3 class="text-xs font-bold text-gray-700 mb-1.5">💵 જમા વિગત</h3>
+          <div class="space-y-1 mb-3">
+            ${paymentEntries.map((d) => `
+              <div class="flex items-center justify-between rounded-lg bg-accent-50 border border-accent-200 px-2.5 py-1.5 text-xs">
+                <span class="text-gray-700">${formatDate(d.date)}</span>
+                <span class="font-semibold text-accent-700">₹${num(d.paid)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3 border border-gray-200">
+          <div class="space-y-1.5 text-xs">
+            <div class="flex justify-between">
+              <span class="text-gray-600">📜 પાછલી બાકી</span>
+              <span class="font-semibold ${previousBalance > 0 ? 'text-warning-700' : 'text-gray-700'}">₹${previousBalance}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">💳 આ મહિનાનું બિલ</span>
+              <span class="font-semibold text-brand-700">₹${monthBill}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">💵 જમા થયેલ રોકડ</span>
+              <span class="font-semibold text-accent-700">₹${totalPaid}</span>
+            </div>
+            <div class="flex justify-between border-t-2 border-gray-300 pt-1.5 text-sm">
+              <span class="font-bold text-gray-800">⚖️ ચોખ્ખી બાકી</span>
+              <span class="font-bold ${netDue > 0 ? 'text-warning-700' : 'text-accent-700'}">₹${netDue}</span>
+            </div>
+          </div>
+        </div>
+
+        ${totalFull > 0 || totalEmpty > 0 ? `
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <div class="rounded-lg p-2.5 bg-brand-50 border border-brand-200 text-center">
+              <div class="text-xs text-gray-600">📦 ભરેલી આપી</div>
+              <div class="text-base font-bold text-brand-700">${totalFull}</div>
+            </div>
+            <div class="rounded-lg p-2.5 bg-accent-50 border border-accent-200 text-center">
+              <div class="text-xs text-gray-600">📦 ખાલી લીધી</div>
+              <div class="text-base font-bold text-accent-700">${totalEmpty}</div>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="text-center mt-4 pt-3 border-t border-gray-200">
+          <p class="text-xs text-gray-400">આ બિલ 💧 ${bizName} દ્વારા જનરેટ કરવામાં આવ્યું છે</p>
+          <p class="text-xs text-gray-400 mt-0.5">🙏 નિયમિત સહકાર બદલ આભાર!</p>
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-gray-200 flex gap-2">
+        <button id="billModalClose" class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-semibold btn-press text-sm">બંધ કરો</button>
+        <button id="billModalPrint" class="flex-1 py-2.5 rounded-xl bg-brand-600 text-white font-semibold btn-press text-sm">🖨️ પ્રિન્ટ / PDF</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+
+  const closeBtn = document.getElementById('billModalClose')
+  const printBtn = document.getElementById('billModalPrint')
+
+  closeBtn.addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove() })
+
+  printBtn.addEventListener('click', () => {
+    const billArea = modal.querySelector('.bill-print-area')
+    const originalContent = document.body.innerHTML
+    document.body.innerHTML = billArea.outerHTML
+    window.print()
+    document.body.innerHTML = originalContent
+    modal.remove()
+    render()
+  })
+}
+
+function buildPassbookMsg(c, monthName, year, totalFull, totalEmpty, totalPaid, pendingBottles, pendingDue, deliveries, billUrl) {
   const { settings } = getState()
   const template = settings?.whatsappTemplate
   if (template) {
@@ -518,6 +684,6 @@ function buildPassbookMsg(c, monthName, year, totalFull, totalEmpty, totalPaid, 
     msg += `----------------------------------\n`
   }
 
-  msg += `📲 *ઓનલાઇન પેમેન્ટ માટે UPI લિંક:*\nupi://pay?pa=manojbharwad@okaxis&pn=Thakardhani%20Water&am=${pendingDue}&cu=INR\n----------------------------------\n🙏 નિયમિત સહકાર બદલ આભાર!\n📞 સંપર્ક: મનોજ ભરવાડ`
+  msg += `📄 *વિગતવાર બિલ જોવા અહીં ક્લિક કરો:*\n${billUrl || ''}\n----------------------------------\n📲 *ઓનલાઇન પેમેન્ટ માટે UPI લિંક:*\nupi://pay?pa=manojbharwad@okaxis&pn=Thakardhani%20Water&am=${pendingDue}&cu=INR\n----------------------------------\n🙏 નિયમિત સહકાર બદલ આભાર!\n📞 સંપર્ક: મનોજ ભરવાડ`
   return msg
 }

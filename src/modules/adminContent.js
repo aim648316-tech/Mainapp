@@ -89,6 +89,13 @@ export function renderAdminContent() {
             </div>
             <input id="toggleTempoAlerts" type="checkbox" ${settings?.tempoAlerts !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
           </label>
+          <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
+            <div>
+              <div class="text-sm font-semibold text-gray-800">⚡ ઓટો-નેક્સ્ટ ગ્રાહક (Auto-Advance)</div>
+              <div class="text-xs text-gray-500">સેવ પછી આપમેળે આગળના ગ્રાહક પર જાઓ</div>
+            </div>
+            <input id="toggleAutoAdvance" type="checkbox" ${settings?.autoAdvance !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
+          </label>
           <div class="rounded-lg p-3 bg-gray-50 border border-gray-200">
             <div class="text-sm font-semibold text-gray-800 mb-2">💰 ડિફોલ્ટ પેમેન્ટ મોડ</div>
             <div class="flex gap-2">
@@ -104,6 +111,35 @@ export function renderAdminContent() {
           </div>
           <button id="saveCustomBtn"
             class="w-full py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">💾 કસ્ટમાઇઝેશન સેવ કરો</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm p-5">
+        <h3 class="font-bold text-gray-800 mb-3">🛺 વાહન સંચાલન (Vehicle Management)</h3>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <input id="vehName" type="text" placeholder="વાહન નામ (દા.ત. બાઈક)"
+              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            <select id="vehFuelType"
+              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm">
+              <option value="Petrol">પેટ્રોલ</option>
+              <option value="CNG">CNG</option>
+              <option value="Diesel">ડીઝલ</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <input id="vehFuelRate" type="number" inputmode="numeric" placeholder="ભાવ ₹/L" value="${settings?.defaultFuelRate || 100}"
+              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
+            <input id="vehMileage" type="number" inputmode="numeric" placeholder="એવરેજ km/L" value="${settings?.defaultMileage || 40}"
+              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
+            <label class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-200 px-3 py-2.5 cursor-pointer">
+              <input id="vehIsDefault" type="checkbox" class="w-4 h-4 accent-brand-600" />
+              <span class="text-xs text-gray-600">ડિફોલ્ટ</span>
+            </label>
+          </div>
+          <button id="addVehBtn"
+            class="w-full py-2.5 rounded-lg bg-accent-500 text-white font-semibold btn-press text-sm">✅ વાહન ઉમેરો</button>
+          <div id="vehList" class="space-y-2"></div>
         </div>
       </div>
 
@@ -306,6 +342,7 @@ export async function initAdminContent(settings, masterPassword) {
       const data = {
         autoCarryover: document.getElementById('toggleAutoCarryover').checked,
         tempoAlerts: document.getElementById('toggleTempoAlerts').checked,
+        autoAdvance: document.getElementById('toggleAutoAdvance').checked,
         defaultPaymentMode: pendingPaymentMode,
         bizName: document.getElementById('customBizName').value.trim() || 'Thakardhani Water Supply',
       }
@@ -359,6 +396,87 @@ export async function initAdminContent(settings, masterPassword) {
   document.getElementById('exportBtn').addEventListener('click', () => exportExcel())
   document.getElementById('backupBtn').addEventListener('click', () => backupData())
   document.getElementById('restoreFile').addEventListener('change', (e) => restoreData(e.target.files[0]))
+
+  renderVehicleList()
+
+  document.getElementById('addVehBtn').addEventListener('click', async () => {
+    const name = document.getElementById('vehName').value.trim()
+    const fuelType = document.getElementById('vehFuelType').value
+    const fuelRate = num(document.getElementById('vehFuelRate').value)
+    const mileage = num(document.getElementById('vehMileage').value)
+    const isDefault = document.getElementById('vehIsDefault').checked
+    if (!name) { alert('વાહન નામ દાખલ કરો!'); return }
+    try {
+      const { vehicles } = getState()
+      if (isDefault) {
+        for (const v of vehicles) {
+          await updateRecord('vehicles', v.id, { isDefault: false })
+        }
+      }
+      await addRecord('vehicles', { name, fuelType, defaultFuelRate: fuelRate, defaultMileage: mileage, isDefault })
+      document.getElementById('vehName').value = ''
+      document.getElementById('vehIsDefault').checked = false
+      alert('✅ વાહન ઉમેરાયું!')
+    } catch (err) { alert('ભૂલ: ' + err.message) }
+  })
+}
+
+function renderVehicleList() {
+  const { vehicles } = getState()
+  const el = document.getElementById('vehList')
+  if (!el) return
+  if (vehicles.length === 0) {
+    el.innerHTML = '<p class="text-center text-gray-400 text-sm py-2">કોઈ વાહન નથી</p>'
+    return
+  }
+  el.innerHTML = vehicles.map((v) => `
+    <div class="flex items-center justify-between rounded-lg p-2.5 bg-accent-50 border border-accent-200">
+      <div class="flex-1">
+        <div class="text-sm font-medium text-accent-700">${v.isDefault ? '⭐ ' : ''}${v.name}</div>
+        <div class="text-xs text-gray-500">${v.fuelType || 'Petrol'} · ₹${v.defaultFuelRate || 0}/L · ${v.defaultMileage || 0} km/L</div>
+      </div>
+      <div class="flex gap-1">
+        ${!v.isDefault ? `<button data-veh-default="${v.id}" class="vehDefault px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs btn-press">⭐</button>` : ''}
+        <button data-veh-edit="${v.id}" class="vehEdit px-2 py-1 rounded-lg bg-brand-50 text-brand-600 text-xs btn-press">✏️</button>
+        <button data-veh-del="${v.id}" class="vehDel px-2 py-1 rounded-lg bg-red-50 text-red-600 text-xs btn-press">🗑️</button>
+      </div>
+    </div>
+  `).join('')
+
+  document.querySelectorAll('.vehDel').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('વાહન ડિલીટ કરવું છે?')) return
+      try { await deleteRecord('vehicles', btn.dataset.vehDel); alert('✅ વાહન ડિલીટ થયું!') }
+      catch (e) { alert('ભૂલ: ' + e.message) }
+    })
+  })
+
+  document.querySelectorAll('.vehDefault').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const { vehicles } = getState()
+      try {
+        for (const v of vehicles) {
+          await updateRecord('vehicles', v.id, { isDefault: v.id === btn.dataset.vehDefault })
+        }
+        alert('✅ ડિફોલ્ટ વાહન સેટ થયું!')
+      } catch (e) { alert('ભૂલ: ' + e.message) }
+    })
+  })
+
+  document.querySelectorAll('.vehEdit').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const { vehicles } = getState()
+      const v = vehicles.find((x) => x.id === btn.dataset.vehEdit)
+      if (!v) return
+      const name = prompt('વાહન નામ:', v.name)
+      if (!name) return
+      const fuelRate = prompt('ભાવ ₹/L:', v.defaultFuelRate || 100)
+      const mileage = prompt('એવરેજ km/L:', v.defaultMileage || 40)
+      updateRecord('vehicles', v.id, { name: name.trim(), defaultFuelRate: num(fuelRate), defaultMileage: num(mileage) })
+        .then(() => alert('✅ વાહન અપડેટ થયું!'))
+        .catch((e) => alert('ભૂલ: ' + e.message))
+    })
+  })
 }
 
 function renderRouteList() {
