@@ -5,7 +5,7 @@ import {
 } from '../utils.js'
 
 const MONTHS = ['જાન્યુઆરી', 'ફેબ્રુઆરી', 'માર્ચ', 'એપ્રિલ', 'મે', 'જૂન', 'જુલાઈ', 'ઓગસ્ટ', 'સપ્ટેમ્બર', 'ઓક્ટોબર', 'નવેમ્બર', 'ડિસેમ્બર']
-const DELETE_PIN = '9916'
+const DELETE_PIN = '1234'
 
 function lastDayOfMonth(year, month) {
   return new Date(parseInt(year), parseInt(month), 0).getDate()
@@ -409,6 +409,29 @@ export function initAccountLedger() {
         saveBtn.disabled = false
         saveBtn.textContent = '💾 રકમ જમા કરો'
         alert(`✅ ₹${totalPaid} જમા થયા! (${monthName} ${year})\n📱 GPay: ₹${gpay} + 💵 રોકડ: ₹${cash}`)
+
+        const { settings: curSettings } = getState()
+        const { customers: curCustomers } = getState()
+        const routeCustomers = sortRouteCustomers(curCustomers, customer.route || routeSelect.value)
+        const routeIds = routeCustomers.map((c) => c.id)
+        const curIdx = routeIds.indexOf(customerId)
+        if (curSettings?.autoAdvance !== false) {
+          if (curIdx !== -1 && curIdx + 1 < routeIds.length) {
+            setTimeout(() => {
+              customerSelect.value = routeIds[curIdx + 1]
+              customerSelect.dispatchEvent(new Event('change'))
+            }, 100)
+          } else if (curIdx !== -1 && curIdx + 1 >= routeIds.length) {
+            const toast = document.createElement('div')
+            toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-xl shadow-lg z-50 text-sm font-semibold fade-in'
+            toast.textContent = '✅ રૂટ પૂર્ણ થયો!'
+            document.body.appendChild(toast)
+            setTimeout(() => toast.remove(), 2000)
+          }
+        } else {
+          customerSelect.value = ''
+          customerSelect.dispatchEvent(new Event('change'))
+        }
       } catch (err) {
         alert('ભૂલ: ' + err.message)
         const saveBtn = document.getElementById('alPaySave')

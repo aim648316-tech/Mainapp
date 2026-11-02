@@ -249,7 +249,7 @@ export function initEntryList() {
 
     async function doDelete() {
       const pin = pinInput.value.trim()
-      if (pin !== '9916') {
+      if (pin !== '1234') {
         errEl.textContent = 'ખોટો પિન!'
         errEl.classList.remove('hidden')
         pinInput.value = ''

@@ -359,7 +359,7 @@ function promptDrDelete(id, customerId, full, empty, due) {
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove() })
 
   async function doDelete() {
-    if (pinInput.value.trim() !== '9916') {
+    if (pinInput.value.trim() !== '1234') {
       errEl.textContent = 'ખોટો પિન!'
       errEl.classList.remove('hidden')
       pinInput.value = ''

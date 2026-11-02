@@ -3,7 +3,7 @@ import {
   addRecord, updateRecord, deleteRecord,
   saveSettings, fetchSettings, num, sortByOrder, getOrder, sortRouteCustomers, batchUpdateRecords,
 } from '../utils.js'
-import { exportExcel, backupData, restoreData } from './adminIO.js'
+import { exportExcel, backupData, restoreData, syncToSheets } from './adminIO.js'
 
 export function renderAdminContent() {
   const { routes, customers, settings } = getState()
@@ -13,189 +13,275 @@ export function renderAdminContent() {
 
   return `
     <div class="space-y-4 fade-in">
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <span>⚙️</span> Admin Panel
-        </h2>
-        <button id="changePinBtn"
-          class="w-full py-3 rounded-xl bg-gradient-to-r from-warning-500 to-warning-600 text-white font-semibold shadow-lg btn-press mb-3">
-          🔑 બદલો એડમિન પાસવર્ડ
-        </button>
-        <button id="changeLoginBtn"
-          class="w-full py-3 rounded-xl bg-gradient-to-r from-brand-500 to-brand-700 text-white font-semibold shadow-lg btn-press">
-          🔐 બદલો એપ લોગિન (Username / Password)
-        </button>
+      <!-- Tab bar -->
+      <div class="bg-white rounded-2xl shadow-sm p-2 flex gap-1 sticky top-0 z-10">
+        <button data-admin-tab="general" id="adminTabGeneral" class="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors bg-brand-600 text-white">⚙️ સામાન્ય</button>
+        <button data-admin-tab="customers" id="adminTabCustomers" class="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors text-gray-600 bg-gray-100">👥 ગ્રાહક</button>
+        <button data-admin-tab="vehicle" id="adminTabVehicle" class="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors text-gray-600 bg-gray-100">🛺 વાહન & મેસેજ</button>
+        <button data-admin-tab="security" id="adminTabSecurity" class="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors text-gray-600 bg-gray-100">🔐 સુરક્ષા</button>
       </div>
 
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">⚙️ ડિફોલ્ટ બોટલ રેટ</h3>
-        <div class="flex gap-2 items-center">
-          <input id="defaultRate" type="number" inputmode="numeric" placeholder="20" value="${defaultRate}"
-            class="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
-          <button id="saveRateBtn"
-            class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">સેવ કરો</button>
-        </div>
-        <p class="text-xs text-gray-500 mt-2">નવી એન્ટ્રીમાં આ રેટ ડિફોલ્ટ તરીકે બતાશે</p>
-        <button id="syncRateBtn"
-          class="w-full mt-3 py-3 rounded-xl bg-gradient-to-r from-warning-500 to-warning-600 text-white font-semibold shadow-lg btn-press">
-          ⚡ બધા ગ્રાહકોમાં આ ભાવ લાગુ કરો (Update All Customers)
-        </button>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">📊 કલેક્શન કાઉન્ટર</h3>
-        <div id="adminCollectionCounter" class="grid grid-cols-2 gap-3"></div>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">⚡ ભાવ કંટ્રોલ & ગ્રુપ અપડેટ</h3>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">📍 રૂટ ફિલ્ટર</label>
-            <select id="bulkRouteFilter"
-              class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm">
-              <option value="">બધા રૂટ</option>
-              ${routeNames.map((r) => `<option value="${r}">${r}</option>`).join('')}
-            </select>
-          </div>
-          <div class="flex gap-2">
-            <button id="bulkSelectAll" class="flex-1 py-2 rounded-lg bg-brand-50 text-brand-700 text-xs font-semibold btn-press border border-brand-200">☑️ બધા પસંદ કરો</button>
-            <button id="bulkDeselectAll" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold btn-press border border-gray-200">☐ બધા નામંજૂર</button>
-          </div>
-          <div id="bulkCustomerList" class="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border border-gray-200 p-2"></div>
+      <!-- TAB: General -->
+      <div id="adminPanelGeneral" class="admin-panel space-y-4">
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">⚙️ ડિફોલ્ટ બોટલ રેટ</h3>
           <div class="flex gap-2 items-center">
-            <input id="bulkRateInput" type="number" inputmode="numeric" placeholder="રેટ ₹" value="${defaultRate}"
-              class="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
-            <button id="bulkApplyBtn"
-              class="px-5 py-2.5 rounded-lg bg-gradient-to-r from-warning-500 to-warning-600 text-white font-semibold btn-press text-sm">⚡ પસંદ કરેલા ગ્રાહકોમાં આ ભાવ લાગુ કરો</button>
+            <input id="defaultRate" type="number" inputmode="numeric" placeholder="20" value="${defaultRate}"
+              class="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            <button id="saveRateBtn"
+              class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">સેવ કરો</button>
           </div>
+          <p class="text-xs text-gray-500 mt-2">નવી એન્ટ્રીમાં આ રેટ ડિફોલ્ટ તરીકે બતાશે</p>
+          <button id="syncRateBtn"
+            class="w-full mt-3 py-3 rounded-xl bg-gradient-to-r from-warning-500 to-warning-600 text-white font-semibold shadow-lg btn-press">
+            ⚡ બધા ગ્રાહકોમાં આ ભાવ લાગુ કરો (Update All Customers)
+          </button>
         </div>
-      </div>
 
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">⚙️ એપ કસ્ટમાઇઝેશન કંટ્રોલ</h3>
-        <div class="space-y-3">
-          <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">📊 કલેક્શન કાઉન્ટર</h3>
+          <div id="adminCollectionCounter" class="grid grid-cols-2 gap-3"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">⚡ ભાવ કંટ્રોલ & ગ્રુપ અપડેટ</h3>
+          <div class="space-y-3">
             <div>
-              <div class="text-sm font-semibold text-gray-800">📜 લેજર ઓટો-કેરીઓવર</div>
-              <div class="text-xs text-gray-500">પાછલી બાકી આપમેળે આગળના મહિનામાં લઈ જાઓ</div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">📍 રૂટ ફિલ્ટર</label>
+              <select id="bulkRouteFilter"
+                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm">
+                <option value="">બધા રૂટ</option>
+                ${routeNames.map((r) => `<option value="${r}">${r}</option>`).join('')}
+              </select>
             </div>
-            <input id="toggleAutoCarryover" type="checkbox" ${settings?.autoCarryover !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
-          </label>
-          <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
-            <div>
-              <div class="text-sm font-semibold text-gray-800">🚚 ટેમ્પો અલર્ટ</div>
-              <div class="text-xs text-gray-500">વેન સ્ટોક ઓછો થાય ત્યારે ચેતવણી બતાવો</div>
-            </div>
-            <input id="toggleTempoAlerts" type="checkbox" ${settings?.tempoAlerts !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
-          </label>
-          <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
-            <div>
-              <div class="text-sm font-semibold text-gray-800">⚡ ઓટો-નેક્સ્ટ ગ્રાહક (Auto-Advance)</div>
-              <div class="text-xs text-gray-500">સેવ પછી આપમેળે આગળના ગ્રાહક પર જાઓ</div>
-            </div>
-            <input id="toggleAutoAdvance" type="checkbox" ${settings?.autoAdvance !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
-          </label>
-          <div class="rounded-lg p-3 bg-gray-50 border border-gray-200">
-            <div class="text-sm font-semibold text-gray-800 mb-2">💰 ડિફોલ્ટ પેમેન્ટ મોડ</div>
             <div class="flex gap-2">
-              <button data-pmode="cash" id="pmodeCash" class="flex-1 py-2 rounded-lg text-xs font-semibold btn-press border ${settings?.defaultPaymentMode === 'cash' ? 'bg-green-500 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200'}">💵 રોકડ</button>
-              <button data-pmode="gpay" id="pmodeGpay" class="flex-1 py-2 rounded-lg text-xs font-semibold btn-press border ${settings?.defaultPaymentMode === 'gpay' ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}">📱 GPay</button>
-              <button data-pmode="split" id="pmodeSplit" class="flex-1 py-2 rounded-lg text-xs font-semibold btn-press border ${settings?.defaultPaymentMode === 'split' || !settings?.defaultPaymentMode ? 'bg-brand-500 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200'}">💸 સ્પ્લિટ</button>
+              <button id="bulkSelectAll" class="flex-1 py-2 rounded-lg bg-brand-50 text-brand-700 text-xs font-semibold btn-press border border-brand-200">☑️ બધા પસંદ કરો</button>
+              <button id="bulkDeselectAll" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold btn-press border border-gray-200">☐ બધા નામંજૂર</button>
+            </div>
+            <div id="bulkCustomerList" class="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border border-gray-200 p-2"></div>
+            <div class="flex gap-2 items-center">
+              <input id="bulkRateInput" type="number" inputmode="numeric" placeholder="રેટ ₹" value="${defaultRate}"
+                class="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
+              <button id="bulkApplyBtn"
+                class="px-5 py-2.5 rounded-lg bg-gradient-to-r from-warning-500 to-warning-600 text-white font-semibold btn-press text-sm">⚡ પસંદ કરેલા ગ્રાહકોમાં આ ભાવ લાગુ કરો</button>
             </div>
           </div>
-          <div class="rounded-lg p-3 bg-gray-50 border border-gray-200">
-            <div class="text-sm font-semibold text-gray-800 mb-2">🏪 બિઝનેસ નામ</div>
-            <input id="customBizName" type="text" value="${settings?.bizName || 'Thakardhani Water Supply'}" placeholder="બિઝનેસ નામ"
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">⚙️ એપ કસ્ટમાઇઝેશન કંટ્રોલ</h3>
+          <div class="space-y-3">
+            <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">📜 લેજર ઓટો-કેરીઓવર</div>
+                <div class="text-xs text-gray-500">પાછલી બાકી આપમેળે આગળના મહિનામાં લઈ જાઓ</div>
+              </div>
+              <input id="toggleAutoCarryover" type="checkbox" ${settings?.autoCarryover !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
+            </label>
+            <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">🚚 ટેમ્પો અલર્ટ</div>
+                <div class="text-xs text-gray-500">વેન સ્ટોક ઓછો થાય ત્યારે ચેતવણી બતાવો</div>
+              </div>
+              <input id="toggleTempoAlerts" type="checkbox" ${settings?.tempoAlerts !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
+            </label>
+            <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">⚡ ઓટો-નેક્સ્ટ ગ્રાહક (Auto-Advance)</div>
+                <div class="text-xs text-gray-500">સેવ પછી આપમેળે આગળના ગ્રાહક પર જાઓ</div>
+              </div>
+              <input id="toggleAutoAdvance" type="checkbox" ${settings?.autoAdvance !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
+            </label>
+            <div class="rounded-lg p-3 bg-gray-50 border border-gray-200">
+              <div class="text-sm font-semibold text-gray-800 mb-2">💰 ડિફોલ્ટ પેમેન્ટ મોડ</div>
+              <div class="flex gap-2">
+                <button data-pmode="cash" id="pmodeCash" class="flex-1 py-2 rounded-lg text-xs font-semibold btn-press border ${settings?.defaultPaymentMode === 'cash' ? 'bg-green-500 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200'}">💵 રોકડ</button>
+                <button data-pmode="gpay" id="pmodeGpay" class="flex-1 py-2 rounded-lg text-xs font-semibold btn-press border ${settings?.defaultPaymentMode === 'gpay' ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}">📱 GPay</button>
+                <button data-pmode="split" id="pmodeSplit" class="flex-1 py-2 rounded-lg text-xs font-semibold btn-press border ${settings?.defaultPaymentMode === 'split' || !settings?.defaultPaymentMode ? 'bg-brand-500 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200'}">💸 સ્પ્લિટ</button>
+              </div>
+            </div>
+            <div class="rounded-lg p-3 bg-gray-50 border border-gray-200">
+              <div class="text-sm font-semibold text-gray-800 mb-2">🏪 બિઝનેસ નામ</div>
+              <input id="customBizName" type="text" value="${settings?.bizName || 'Thakardhani Water Supply'}" placeholder="બિઝનેસ નામ"
+                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            </div>
+            <button id="saveCustomBtn"
+              class="w-full py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">💾 કસ્ટમાઇઝેશન સેવ કરો</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Customers -->
+      <div id="adminPanelCustomers" class="admin-panel space-y-4 hidden">
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">📍 રૂટ મેનેજમેન્ટ</h3>
+          <div class="flex gap-2 mb-3">
+            <input id="newRoute" type="text" placeholder="નવું રૂટ નામ"
+              class="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            <button id="addRouteBtn"
+              class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">ઉમેરો</button>
+          </div>
+          <div id="routeList" class="space-y-2"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">👤 નવો ગ્રાહક ઉમેરો</h3>
+          <div class="space-y-3">
+            <input id="custName" type="text" placeholder="ગ્રાહક નામ"
               class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            <input id="custPhone" type="tel" placeholder="મોબાઈલ નંબર"
+              class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            <div class="grid grid-cols-2 gap-3">
+              <input id="custRate" type="number" inputmode="numeric" placeholder="રેટ" value="${defaultRate}"
+                class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+              <select id="custRoute"
+                class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm">
+                ${routeNames.map((r) => `<option value="${r}" ${r === 'Phase 2' ? 'selected' : ''}>${r}</option>`).join('')}
+              </select>
+            </div>
+            <button id="addCustBtn"
+              class="w-full py-3 rounded-xl bg-accent-500 text-white font-semibold shadow-lg btn-press">✅ ગ્રાહક ઉમેરો</button>
           </div>
-          <button id="saveCustomBtn"
-            class="w-full py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">💾 કસ્ટમાઇઝેશન સેવ કરો</button>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-bold text-gray-800">📋 ગ્રાહક યાદી</h3>
+            <div class="flex gap-2">
+              <button id="exportBtn" class="px-3 py-2 rounded-lg bg-accent-50 text-accent-700 text-sm font-semibold btn-press border border-accent-200">📊 Excel</button>
+              <button id="backupBtn" class="px-3 py-2 rounded-lg bg-brand-50 text-brand-700 text-sm font-semibold btn-press border border-brand-200">💾 Backup</button>
+              <label class="px-3 py-2 rounded-lg bg-warning-50 text-warning-700 text-sm font-semibold btn-press border border-warning-200 cursor-pointer">
+                📂 Restore
+                <input id="restoreFile" type="file" accept=".json" class="hidden" />
+              </label>
+            </div>
+          </div>
+          <div id="custList" class="space-y-2"></div>
         </div>
       </div>
 
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">🛺 વાહન સંચાલન (Vehicle Management)</h3>
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <input id="vehName" type="text" placeholder="વાહન નામ (દા.ત. બાઈક)"
-              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
-            <select id="vehFuelType"
-              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm">
-              <option value="Petrol">પેટ્રોલ</option>
-              <option value="CNG">CNG</option>
-              <option value="Diesel">ડીઝલ</option>
-            </select>
+      <!-- TAB: Vehicle & Messaging -->
+      <div id="adminPanelVehicle" class="admin-panel space-y-4 hidden">
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">🛺 વાહન સંચાલન (Vehicle Management)</h3>
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <input id="vehName" type="text" placeholder="વાહન નામ (દા.ત. બાઈક)"
+                class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+              <select id="vehFuelType"
+                class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm">
+                <option value="Petrol">પેટ્રોલ</option>
+                <option value="CNG">CNG</option>
+                <option value="Diesel">ડીઝલ</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <input id="vehFuelRate" type="number" inputmode="numeric" placeholder="ભાવ ₹/L" value="${settings?.defaultFuelRate || 100}"
+                class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
+              <input id="vehMileage" type="number" inputmode="numeric" placeholder="એવરેજ km/L" value="${settings?.defaultMileage || 40}"
+                class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
+              <label class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-200 px-3 py-2.5 cursor-pointer">
+                <input id="vehIsDefault" type="checkbox" class="w-4 h-4 accent-brand-600" />
+                <span class="text-xs text-gray-600">ડિફોલ્ટ</span>
+              </label>
+            </div>
+            <button id="addVehBtn"
+              class="w-full py-2.5 rounded-lg bg-accent-500 text-white font-semibold btn-press text-sm">✅ વાહન ઉમેરો</button>
+            <div id="vehList" class="space-y-2"></div>
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <input id="vehFuelRate" type="number" inputmode="numeric" placeholder="ભાવ ₹/L" value="${settings?.defaultFuelRate || 100}"
-              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
-            <input id="vehMileage" type="number" inputmode="numeric" placeholder="એવરેજ km/L" value="${settings?.defaultMileage || 40}"
-              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center" />
-            <label class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-200 px-3 py-2.5 cursor-pointer">
-              <input id="vehIsDefault" type="checkbox" class="w-4 h-4 accent-brand-600" />
-              <span class="text-xs text-gray-600">ડિફોલ્ટ</span>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">💬 WhatsApp ટેમ્પલેટ એડિટર</h3>
+          <textarea id="waTemplate" rows="6" placeholder="WhatsApp બિલ મેસેજ ટેમ્પલેટ અહીં લખો..."
+            class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm font-mono">${waTemplate || '{name}, {route}, {month}, {full}, {empty}, {paid}, {bottles}, {due}'}</textarea>
+          <p class="text-xs text-gray-500 mt-2">વેરિએબલ: {name}, {route}, {month}, {full}, {empty}, {paid}, {bottles}, {due}</p>
+          <button id="saveWaBtn"
+            class="w-full mt-3 py-2.5 rounded-lg bg-green-500 text-white font-semibold btn-press text-sm">💾 ટેમ્પલેટ સેવ કરો</button>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">📲 UPI પેમેન્ટ કન્ફિગરેશન</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">UPI ID</label>
+              <input id="upiIdInput" type="text" value="${settings?.upiId || 'manojbharwad@okaxis'}" placeholder="example@okaxis"
+                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Payee નામ</label>
+              <input id="payeeNameInput" type="text" value="${settings?.payeeName || 'ઠાકરધણી વોટર સપ્લાય'}" placeholder="Payee નામ"
+                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+            </div>
+            <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">📲 WhatsApp માં UPI લિંક બતાવો</div>
+                <div class="text-xs text-gray-500">બિલ મેસેજમાં પેમેન્ટ લિંક ઉમેરો</div>
+              </div>
+              <input id="toggleUpiInWa" type="checkbox" ${settings?.includeUpiInWa !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
             </label>
-          </div>
-          <button id="addVehBtn"
-            class="w-full py-2.5 rounded-lg bg-accent-500 text-white font-semibold btn-press text-sm">✅ વાહન ઉમેરો</button>
-          <div id="vehList" class="space-y-2"></div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">💬 WhatsApp ટેમ્પલેટ એડિટર</h3>
-        <textarea id="waTemplate" rows="6" placeholder="WhatsApp બિલ મેસેજ ટેમ્પલેટ અહીં લખો..."
-          class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm font-mono">${waTemplate || '{name}, {route}, {month}, {full}, {empty}, {paid}, {bottles}, {due}'}</textarea>
-        <p class="text-xs text-gray-500 mt-2">વેરિએબલ: {name}, {route}, {month}, {full}, {empty}, {paid}, {bottles}, {due}</p>
-        <button id="saveWaBtn"
-          class="w-full mt-3 py-2.5 rounded-lg bg-green-500 text-white font-semibold btn-press text-sm">💾 ટેમ્પલેટ સેવ કરો</button>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">📍 રૂટ મેનેજમેન્ટ</h3>
-        <div class="flex gap-2 mb-3">
-          <input id="newRoute" type="text" placeholder="નવું રૂટ નામ"
-            class="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
-          <button id="addRouteBtn"
-            class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">ઉમેરો</button>
-        </div>
-        <div id="routeList" class="space-y-2"></div>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <h3 class="font-bold text-gray-800 mb-3">👤 નવો ગ્રાહક ઉમેરો</h3>
-        <div class="space-y-3">
-          <input id="custName" type="text" placeholder="ગ્રાહક નામ"
-            class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
-          <input id="custPhone" type="tel" placeholder="મોબાઈલ નંબર"
-            class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
-          <div class="grid grid-cols-2 gap-3">
-            <input id="custRate" type="number" inputmode="numeric" placeholder="રેટ" value="${defaultRate}"
-              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
-            <select id="custRoute"
-              class="px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm">
-              ${routeNames.map((r) => `<option value="${r}" ${r === 'Phase 2' ? 'selected' : ''}>${r}</option>`).join('')}
-            </select>
-          </div>
-          <button id="addCustBtn"
-            class="w-full py-3 rounded-xl bg-accent-500 text-white font-semibold shadow-lg btn-press">✅ ગ્રાહક ઉમેરો</button>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-sm p-5">
-        <div class="flex justify-between items-center mb-3">
-          <h3 class="font-bold text-gray-800">📋 ગ્રાહક યાદી</h3>
-          <div class="flex gap-2">
-            <button id="exportBtn" class="px-3 py-2 rounded-lg bg-accent-50 text-accent-700 text-sm font-semibold btn-press border border-accent-200">📊 Excel</button>
-            <button id="backupBtn" class="px-3 py-2 rounded-lg bg-brand-50 text-brand-700 text-sm font-semibold btn-press border border-brand-200">💾 Backup</button>
-            <label class="px-3 py-2 rounded-lg bg-warning-50 text-warning-700 text-sm font-semibold btn-press border border-warning-200 cursor-pointer">
-              📂 Restore
-              <input id="restoreFile" type="file" accept=".json" class="hidden" />
+            <label class="flex items-center justify-between rounded-lg p-3 bg-gray-50 border border-gray-200 cursor-pointer">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">🖼️ બિલમાં QR કોડ બતાવો</div>
+                <div class="text-xs text-gray-500">PDF બિલમાં UPI QR કોડ</div>
+              </div>
+              <input id="toggleQrInBill" type="checkbox" ${settings?.includeQrInBill !== false ? 'checked' : ''} class="w-5 h-5 accent-brand-600" />
             </label>
+            <button id="saveUpiBtn"
+              class="w-full py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">💾 UPI સેટિંગ્સ સેવ કરો</button>
           </div>
         </div>
-        <div id="custList" class="space-y-2"></div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">📊 Google Sheets સિંક</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Webhook URL</label>
+              <input id="sheetsWebhookUrl" type="text" value="${settings?.sheetsWebhookUrl || ''}" placeholder="https://script.google.com/macros/s/.../exec"
+                class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm" />
+              <p class="text-xs text-gray-500 mt-1">Google Apps Script Webhook URL દાખલ કરો</p>
+            </div>
+            <div class="flex gap-2">
+              <button id="saveWebhookBtn" class="flex-1 py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">💾 સેવ</button>
+              <button id="syncSheetsBtn" class="flex-1 py-2.5 rounded-lg bg-accent-500 text-white font-semibold btn-press text-sm">🔄 સિંક કરો</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Security -->
+      <div id="adminPanelSecurity" class="admin-panel space-y-4 hidden">
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span>🔐</span> સુરક્ષા & પાસવર્ડ
+          </h3>
+          <div class="space-y-3">
+            <button id="changePinBtn"
+              class="w-full py-3 rounded-xl bg-gradient-to-r from-warning-500 to-warning-600 text-white font-semibold shadow-lg btn-press">
+              🔑 બદલો એડમિન પાસવર્ડ
+            </button>
+            <button id="changeLoginBtn"
+              class="w-full py-3 rounded-xl bg-gradient-to-r from-brand-500 to-brand-700 text-white font-semibold shadow-lg btn-press">
+              🔐 બદલો એપ લોગિન (Username / Password)
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5">
+          <h3 class="font-bold text-gray-800 mb-3">🔒 ડિલીટ PIN મેનેજમેન્ટ</h3>
+          <div class="space-y-3">
+            <div class="rounded-lg p-3 bg-gray-50 border border-gray-200">
+              <div class="text-sm font-semibold text-gray-800 mb-1">🗑️ ડિલીટ PIN</div>
+              <div class="text-xs text-gray-500 mb-2">એન્ટ્રી, પેમેન્ટ, ખર્ચ અને રૂટ ડિલીટ કરવા માટે વપરાય છે</div>
+              <div class="flex gap-2">
+                <input id="deletePinInput" type="password" inputmode="numeric" maxlength="4" value="${settings?.routeDeletePin || '1234'}" placeholder="1234"
+                  class="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 text-gray-800 text-sm text-center tracking-widest" />
+                <button id="saveDeletePinBtn"
+                  class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-semibold btn-press text-sm">સેવ</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   `
@@ -212,6 +298,24 @@ export async function initAdminContent(settings, masterPassword) {
 
   if (rateInput && fullSettings?.defaultRate) rateInput.value = fullSettings.defaultRate
   if (waInput && fullSettings?.whatsappTemplate) waInput.value = fullSettings.whatsappTemplate
+
+  // Tab switching
+  function switchTab(tabName) {
+    document.querySelectorAll('.admin-panel').forEach((p) => p.classList.add('hidden'))
+    document.querySelectorAll('[data-admin-tab]').forEach((btn) => {
+      if (btn.dataset.adminTab === tabName) {
+        btn.className = 'flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors bg-brand-600 text-white'
+      } else {
+        btn.className = 'flex-1 py-2.5 rounded-lg text-xs font-semibold transition-colors text-gray-600 bg-gray-100'
+      }
+    })
+    const panel = document.getElementById('adminPanel' + tabName.charAt(0).toUpperCase() + tabName.slice(1))
+    if (panel) panel.classList.remove('hidden')
+  }
+
+  document.querySelectorAll('[data-admin-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.adminTab))
+  })
 
   renderRouteList()
   renderCustList()
@@ -359,6 +463,67 @@ export async function initAdminContent(settings, masterPassword) {
       alert('✅ WhatsApp ટેમ્પલેટ સેવ થયું!')
     } catch (err) { alert('ભૂલ: ' + err.message) }
   })
+
+  // UPI config save
+  const saveUpiBtn = document.getElementById('saveUpiBtn')
+  if (saveUpiBtn) {
+    saveUpiBtn.addEventListener('click', async () => {
+      try {
+        const data = {
+          upiId: document.getElementById('upiIdInput').value.trim(),
+          payeeName: document.getElementById('payeeNameInput').value.trim(),
+          includeUpiInWa: document.getElementById('toggleUpiInWa').checked,
+          includeQrInBill: document.getElementById('toggleQrInBill').checked,
+        }
+        await saveSettings(data)
+        updateSettings(data)
+        alert('✅ UPI સેટિંગ્સ સેવ થયું!')
+      } catch (err) { alert('ભૂલ: ' + err.message) }
+    })
+  }
+
+  // Webhook URL save + sync
+  const saveWebhookBtn = document.getElementById('saveWebhookBtn')
+  if (saveWebhookBtn) {
+    saveWebhookBtn.addEventListener('click', async () => {
+      try {
+        const url = document.getElementById('sheetsWebhookUrl').value.trim()
+        await saveSettings({ sheetsWebhookUrl: url })
+        updateSettings({ sheetsWebhookUrl: url })
+        alert('✅ Webhook URL સેવ થયું!')
+      } catch (err) { alert('ભૂલ: ' + err.message) }
+    })
+  }
+
+  const syncSheetsBtn = document.getElementById('syncSheetsBtn')
+  if (syncSheetsBtn) {
+    syncSheetsBtn.addEventListener('click', async () => {
+      syncSheetsBtn.disabled = true
+      syncSheetsBtn.textContent = 'સિંક થઈ રહ્યું છે...'
+      try {
+        await saveSettings({ sheetsWebhookUrl: document.getElementById('sheetsWebhookUrl').value.trim() })
+        updateSettings({ sheetsWebhookUrl: document.getElementById('sheetsWebhookUrl').value.trim() })
+        const ok = await syncToSheets()
+        if (ok) alert('✅ Google Sheets માં સિંક થયું!')
+      } catch (err) { alert('ભૂલ: ' + err.message) }
+      syncSheetsBtn.disabled = false
+      syncSheetsBtn.textContent = '🔄 સિંક કરો'
+    })
+  }
+
+  // Delete PIN save
+  const saveDeletePinBtn = document.getElementById('saveDeletePinBtn')
+  if (saveDeletePinBtn) {
+    saveDeletePinBtn.addEventListener('click', async () => {
+      const pin = document.getElementById('deletePinInput').value.trim()
+      if (pin.length !== 4 || !/^\d{4}$/.test(pin)) { alert('4-ડિજિટનો PIN દાખલ કરો!'); return }
+      try {
+        await saveSettings({ routeDeletePin: pin })
+        updateSettings({ routeDeletePin: pin })
+        alert('✅ ડિલીટ PIN સેવ થયો!')
+      } catch (err) { alert('ભૂલ: ' + err.message) }
+    })
+  }
 
   document.getElementById('addRouteBtn').addEventListener('click', async () => {
     const name = document.getElementById('newRoute').value.trim()
@@ -590,7 +755,7 @@ function openChangeLoginModal(masterPassword) {
       <div id="newLoginSection" class="hidden space-y-3">
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">નવો Username</label>
-          <input id="newAppUser" type="text" placeholder="નવો યુઝરનેમ"
+          <input id="newAppUser" type="text" placeholder="નવો યિઝરનેમ"
             class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 text-gray-800" />
         </div>
         <div>
@@ -633,7 +798,7 @@ function openChangeLoginModal(masterPassword) {
       const newUser = newUserInput.value.trim()
       const newPass = newPassInput.value.trim()
       if (!newUser || !newPass) {
-        alert('યુઝરનેમ અને પાસવર્ડ બંને દાખલ કરો!')
+        alert('યિઝરનેમ અને પાસવર્ડ બંને દાખલ કરો!')
         return
       }
       await saveSettings({ appUsername: newUser, appPassword: newPass })
@@ -823,7 +988,7 @@ function promptDeleteRoute(route) {
   const { customers, settings } = getState()
   const routeCustomers = customers.filter((c) => (c.route || '').trim().toLowerCase() === (route.name || '').trim().toLowerCase())
   const count = routeCustomers.length
-  const routeDeletePin = settings?.routeDeletePin || '9916'
+  const routeDeletePin = settings?.routeDeletePin || '1234'
 
   const modal = document.createElement('div')
   modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 fade-in'

@@ -1,5 +1,6 @@
 import { getState } from '../store.js'
 import { addRecord, updateRecord, deleteRecord, num, formatDate, guDate, todayStr, timeStr, sortRouteCustomers } from '../utils.js'
+import { generateBillPDF, sharePDFFile } from '../pdfUtils.js'
 
 const MONTHS = ['જાન્યુઆરી', 'ફેબ્રુઆરી', 'માર્ચ', 'એપ્રિલ', 'મે', 'જૂન', 'જુલાઈ', 'ઓગસ્ટ', 'સપ્ટેમ્બર', 'ઓક્ટોબર', 'નવેમ્બર', 'ડિસેમ્બર']
 
@@ -397,7 +398,7 @@ function promptPbDeletePayment(id, customerId, monthDeliveries, customer) {
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove() })
 
   async function doDelete() {
-    if (pinInput.value.trim() !== '9916') {
+    if (pinInput.value.trim() !== '1234') {
       errEl.textContent = 'ખોટો PIN!'
       errEl.classList.remove('hidden')
       pinInput.value = ''
@@ -623,30 +624,84 @@ function showBillPreviewModal(customer, monthName, year, monthDeliveries, before
           <p class="text-xs text-gray-400">આ બિલ 💧 ${bizName} દ્વારા જનરેટ કરવામાં આવ્યું છે</p>
           <p class="text-xs text-gray-400 mt-0.5">🙏 નિયમિત સહકાર બદલ આભાર!</p>
         </div>
+
+        ${(() => {
+          const upiId = settings?.upiId || 'manojbharwad@okaxis'
+          const payeeName = settings?.payeeName || bizName
+          const includeQr = settings?.includeQrInBill !== false
+          if (includeQr && upiId && netDue > 0) {
+            const qrUrl = `https://upiqr.in/api/qr?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payeeName)}&am=${netDue}&cu=INR`
+            return `
+            <div class="text-center mt-3 p-2.5 bg-gray-50 rounded-xl border border-gray-200">
+              <div class="text-xs font-semibold text-gray-600 mb-1.5">📲 UPI પેમેન્ટ કરો</div>
+              <img src="${qrUrl}" alt="UPI QR" class="mx-auto w-28 h-28 rounded-lg" />
+              <div class="text-xs text-gray-500 mt-1.5">UPI ID: ${upiId}</div>
+              <div class="text-sm font-bold text-brand-700 mt-0.5">₹${netDue}</div>
+            </div>
+            `
+          }
+          return ''
+        })()}
       </div>
 
-      <div class="p-4 border-t border-gray-200 flex gap-2">
-        <button id="billModalClose" class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-semibold btn-press text-sm">બંધ કરો</button>
-        <button id="billModalPrint" class="flex-1 py-2.5 rounded-xl bg-brand-600 text-white font-semibold btn-press text-sm">🖨️ પ્રિન્ટ / PDF</button>
+      <div class="p-4 border-t border-gray-200 no-print">
+        <div class="flex gap-2 mb-2">
+          <button id="billModalClose" class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-semibold btn-press text-sm">બંધ કરો</button>
+          <button id="billModalPdf" class="flex-1 py-2.5 rounded-xl bg-brand-600 text-white font-semibold btn-press text-sm">📥 PDF ડાઉનલોડ</button>
+        </div>
+        <button id="billModalShare" class="w-full py-2.5 rounded-xl bg-green-500 text-white font-semibold btn-press text-sm">📲 ગ્રાહકને PDF મોકલો</button>
       </div>
     </div>
   `
   document.body.appendChild(modal)
 
   const closeBtn = document.getElementById('billModalClose')
-  const printBtn = document.getElementById('billModalPrint')
+  const pdfBtn = document.getElementById('billModalPdf')
+  const shareBtn = document.getElementById('billModalShare')
+  const billArea = modal.querySelector('.bill-print-area')
 
-  closeBtn.addEventListener('click', () => modal.remove())
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove() })
-
-  printBtn.addEventListener('click', () => {
-    const billArea = modal.querySelector('.bill-print-area')
-    const originalContent = document.body.innerHTML
-    document.body.innerHTML = billArea.outerHTML
-    window.print()
-    document.body.innerHTML = originalContent
+  closeBtn.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
     modal.remove()
-    render()
+  })
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      e.preventDefault()
+      e.stopPropagation()
+      modal.remove()
+    }
+  })
+
+  const safeFileName = `${customer.name || 'bill'}_${monthName}_${year}.pdf`.replace(/[^a-zA-Z0-9_\-.]/g, '_')
+
+  pdfBtn.addEventListener('click', async () => {
+    pdfBtn.disabled = true
+    pdfBtn.textContent = 'બનાવી રહ્યું છે...'
+    try {
+      await generateBillPDF(billArea, safeFileName)
+    } catch (err) {
+      alert('PDF ભૂલ: ' + err.message)
+    }
+    pdfBtn.disabled = false
+    pdfBtn.textContent = '📥 PDF ડાઉનલોડ'
+  })
+
+  shareBtn.addEventListener('click', async () => {
+    shareBtn.disabled = true
+    shareBtn.textContent = 'બનાવી રહ્યું છે...'
+    try {
+      const waMsg = `💧 ઠાકરધણી વોટર સપ્લાય 💧\n👤 ${customer.name} - ${monthName} ${year}\n⚖️ ચોખ્ખી બાકી: ₹${netDue}\n📄 બિલ PDF જોડે છે.`
+      const shared = await sharePDFFile(billArea, safeFileName, waMsg)
+      if (!shared) {
+        const waUrl = `https://wa.me/${(customer.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`
+        window.open(waUrl, '_blank')
+      }
+    } catch (err) {
+      alert('શેર ભૂલ: ' + err.message)
+    }
+    shareBtn.disabled = false
+    shareBtn.textContent = '📲 ગ્રાહકને PDF મોકલો'
   })
 }
 
@@ -684,6 +739,15 @@ function buildPassbookMsg(c, monthName, year, totalFull, totalEmpty, totalPaid, 
     msg += `----------------------------------\n`
   }
 
-  msg += `📄 *વિગતવાર બિલ જોવા અહીં ક્લિક કરો:*\n${billUrl || ''}\n----------------------------------\n📲 *ઓનલાઇન પેમેન્ટ માટે UPI લિંક:*\nupi://pay?pa=manojbharwad@okaxis&pn=Thakardhani%20Water&am=${pendingDue}&cu=INR\n----------------------------------\n🙏 નિયમિત સહકાર બદલ આભાર!\n📞 સંપર્ક: મનોજ ભરવાડ`
+  msg += `📄 *વિગતવાર બિલ જોવા અહીં ક્લિક કરો:*\n${billUrl || ''}\n----------------------------------\n`
+
+  const upiId = settings?.upiId || 'manojbharwad@okaxis'
+  const payeeName = settings?.payeeName || 'ઠાકરધણી વોટર સપ્લાય'
+  const includeUpi = settings?.includeUpiInWa !== false
+  if (includeUpi) {
+    msg += `📲 *ઓનલાઇન પેમેન્ટ:*\nUPI ID: ${upiId}\nલિંક: https://upiqr.in/api/qr?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${pendingDue}\n----------------------------------\n`
+  }
+
+  msg += `🙏 નિયમિત સહકાર બદલ આભાર!\n📞 સંપર્ક: મનોજ ભરવાડ`
   return msg
 }

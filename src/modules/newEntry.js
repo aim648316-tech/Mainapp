@@ -66,12 +66,12 @@ export function renderNewEntry() {
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">📦 ભરેલી આપી</label>
-              <input id="neFull" type="number" inputmode="numeric" value="0"
+              <input id="neFull" type="number" inputmode="numeric" placeholder="0"
                 class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-lg text-center" />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">📦 ખાલી લીધી</label>
-              <input id="neEmpty" type="number" inputmode="numeric" value="0"
+              <input id="neEmpty" type="number" inputmode="numeric" placeholder="0"
                 class="w-full px-3 py-2.5 rounded-lg border-2 border-gray-200 focus:border-brand-500 transition-colors text-gray-800 text-lg text-center" />
             </div>
           </div>
@@ -146,8 +146,17 @@ export function initNewEntry() {
     if (currentIdx !== -1 && currentIdx + 1 < routeCustomerIds.length) {
       customerSelect.value = routeCustomerIds[currentIdx + 1]
       customerSelect.dispatchEvent(new Event('change'))
+    } else if (currentIdx !== -1 && currentIdx + 1 >= routeCustomerIds.length) {
+      const toast = document.createElement('div')
+      toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-xl shadow-lg z-50 text-sm font-semibold fade-in'
+      toast.textContent = '✅ રૂટ પૂર્ણ થયો!'
+      document.body.appendChild(toast)
+      setTimeout(() => toast.remove(), 2000)
     }
   }
+
+  fullInput.addEventListener('focus', () => fullInput.select())
+  emptyInput.addEventListener('focus', () => emptyInput.select())
 
   routeSelect.addEventListener('change', () => { updateCustomers(); checkDuplicate() })
   customerSelect.addEventListener('change', () => {
@@ -216,12 +225,15 @@ export function initNewEntry() {
       customers: optimisticCustomers,
     })
 
-    fullInput.value = '0'
-    emptyInput.value = '0'
+    fullInput.value = ''
+    emptyInput.value = ''
     updateDue()
 
     if (settings?.autoAdvance !== false) {
       setTimeout(() => advanceToNextCustomer(), 100)
+    } else {
+      customerSelect.value = ''
+      customerSelect.dispatchEvent(new Event('change'))
     }
 
     try {

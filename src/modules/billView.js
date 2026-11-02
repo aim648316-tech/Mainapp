@@ -1,5 +1,6 @@
 import { getState } from '../store.js'
 import { num, formatDate, sortRouteCustomers } from '../utils.js'
+import { generateBillPDF, sharePDFFile } from '../pdfUtils.js'
 
 const MONTHS = ['જાન્યુઆરી', 'ફેબ્રુઆરી', 'માર્ચ', 'એપ્રિલ', 'મે', 'જૂન', 'જુલાઈ', 'ઓગસ્ટ', 'સપ્ટેમ્બર', 'ઓક્ટોબર', 'નવેમ્બર', 'ડિસેમ્બર']
 
@@ -182,15 +183,32 @@ export function renderBillView(query) {
               <p class="text-xs text-gray-400">આ બિલ 💧 ${bizName} દ્વારા જનરેટ કરવામાં આવ્યું છે</p>
               <p class="text-xs text-gray-400 mt-1">🙏 નિયમિત સહકાર બદલ આભાર!</p>
             </div>
+
+            ${(() => {
+              const upiId = settings?.upiId || 'manojbharwad@okaxis'
+              const payeeName = settings?.payeeName || bizName
+              const includeQr = settings?.includeQrInBill !== false
+              if (includeQr && upiId && netDue > 0) {
+                const qrUrl = `https://upiqr.in/api/qr?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payeeName)}&am=${netDue}&cu=INR`
+                return `
+                <div class="text-center mt-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div class="text-xs font-semibold text-gray-600 mb-2">📲 UPI પેમેન્ટ કરો</div>
+                  <img src="${qrUrl}" alt="UPI QR" class="mx-auto w-32 h-32 rounded-lg" />
+                  <div class="text-xs text-gray-500 mt-2">UPI ID: ${upiId}</div>
+                  <div class="text-sm font-bold text-brand-700 mt-1">₹${netDue}</div>
+                </div>
+                `
+              }
+              return ''
+            })()}
           </div>
         </div>
 
-        <div class="mt-4 flex gap-3">
+        <div class="mt-4 flex gap-3 no-print">
           <button id="billPrintBtn"
-            class="flex-1 py-3 rounded-xl bg-brand-600 text-white font-semibold shadow-lg btn-press text-sm">🖨️ પ્રિન્ટ / PDF</button>
-          <a href="${buildWhatsAppShareLink(customerId, month, year)}"
-            target="_blank"
-            class="flex-1 py-3 rounded-xl bg-green-500 text-white font-semibold shadow-lg btn-press text-sm text-center">📲 WhatsApp પર મોકલો</a>
+            class="flex-1 py-3 rounded-xl bg-brand-600 text-white font-semibold shadow-lg btn-press text-sm">📥 PDF ડાઉનલોડ</button>
+          <button id="billShareBtn"
+            class="flex-1 py-3 rounded-xl bg-green-500 text-white font-semibold shadow-lg btn-press text-sm">📲 WhatsApp પર મોકલો</button>
         </div>
       </div>
     </div>
@@ -198,9 +216,44 @@ export function renderBillView(query) {
 }
 
 export function initBillView(query) {
+  const params = parseQuery(query)
+  const { customers } = getState()
+  const customer = customers.find((c) => c.id === params.id)
+  const monthName = params.month ? MONTHS[parseInt(params.month, 10) - 1] || '' : ''
+
   const printBtn = document.getElementById('billPrintBtn')
-  if (printBtn) {
-    printBtn.addEventListener('click', () => window.print())
+  const shareBtn = document.getElementById('billShareBtn')
+  const billArea = document.querySelector('.bill-print-area') || document.querySelector('.bg-white.rounded-2xl.shadow-lg')
+
+  if (printBtn && billArea) {
+    printBtn.addEventListener('click', async () => {
+      printBtn.disabled = true
+      printBtn.textContent = 'બનાવી રહ્યું છે...'
+      try {
+        const fileName = `${customer?.name || 'bill'}_${monthName}_${params.year}.pdf`.replace(/[^a-zA-Z0-9_\-.]/g, '_')
+        await generateBillPDF(billArea, fileName)
+      } catch (err) { alert('PDF ભૂલ: ' + err.message) }
+      printBtn.disabled = false
+      printBtn.textContent = '📥 PDF ડાઉનલોડ'
+    })
+  }
+
+  if (shareBtn && billArea) {
+    shareBtn.addEventListener('click', async () => {
+      shareBtn.disabled = true
+      shareBtn.textContent = 'બનાવી રહ્યું છે...'
+      try {
+        const fileName = `${customer?.name || 'bill'}_${monthName}_${params.year}.pdf`.replace(/[^a-zA-Z0-9_\-.]/g, '_')
+        const waMsg = `💧 ઠાકરધણી વોટર સપ્લાય 💧\n👤 ${customer?.name || ''} - ${monthName} ${params.year}\n📄 બિલ PDF જોડે છે.`
+        const shared = await sharePDFFile(billArea, fileName, waMsg)
+        if (!shared) {
+          const waUrl = `https://wa.me/${(customer?.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`
+          window.open(waUrl, '_blank')
+        }
+      } catch (err) { alert('શેર ભૂલ: ' + err.message) }
+      shareBtn.disabled = false
+      shareBtn.textContent = '📲 WhatsApp પર મોકલો'
+    })
   }
 }
 

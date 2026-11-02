@@ -93,3 +93,44 @@ body {
 input:focus, select:focus, textarea:focus {
   outline: none;
 }
+
+/* Print / PDF styles */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  .bill-print-area {
+    page-break-inside: avoid;
+  }
+  .bill-print-area table tr,
+  .bill-print-area .rounded-xl {
+    page-break-inside: avoid;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .bill-print-area,
+  .bill-print-area * {
+    visibility: visible;
+  }
+  .bill-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
+/* Admin tab buttons */
+.admin-tab-btn {
+  transition: all 0.2s ease;
+}
+
+/* Vehicle calculator mode tabs */
+.calc-mode-tab {
+  transition: all 0.2s ease;
+}
